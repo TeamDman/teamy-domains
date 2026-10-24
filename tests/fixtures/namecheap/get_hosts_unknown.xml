@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ApiResponse xmlns="http://api.namecheap.com/xml.response" Status="OK">
+  <Errors />
+  <RequestedCommand>namecheap.domains.dns.getHosts</RequestedCommand>
+  <CommandResponse Type="namecheap.domains.dns.getHosts">
+    <DomainDNSGetHostsResult Domain="example.test" IsUsingOurDNS="true" FutureService="keep">
+      <Host HostId="21" Name="_future" Type="FUTURE" Address="opaque" TTL="1800" FutureFlag="keep" />
+      <FutureChild Enabled="true">preserve me</FutureChild>
+    </DomainDNSGetHostsResult>
+  </CommandResponse>
+</ApiResponse>

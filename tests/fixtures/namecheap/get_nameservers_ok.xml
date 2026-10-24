@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ApiResponse xmlns="http://api.namecheap.com/xml.response" Status="OK">
+  <Errors />
+  <RequestedCommand>namecheap.domains.dns.getList</RequestedCommand>
+  <CommandResponse Type="namecheap.domains.dns.getList">
+    <DomainDNSGetListResult Domain="example.test" IsUsingOurDNS="false">
+      <Nameserver>ns1.azure.example.test</Nameserver>
+      <Nameserver>ns2.azure.example.test</Nameserver>
+    </DomainDNSGetListResult>
+  </CommandResponse>
+</ApiResponse>

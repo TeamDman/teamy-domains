@@ -13,6 +13,12 @@ Status: **design only**. No message in this document is accepted by the current 
 
 The caller chooses a provider by typed capability, not by an arbitrary URL or command string. Account/item references and network destination are broker configuration, not a CLI override. Teamy Desktop is the proposed execution location because Namecheap requires an allowlisted public IPv4; no allowlist is configured by this project. No durable cloud credential is needed.
 
+### Smallest extension from inspected broker V1
+
+At [`dc129eb7`](https://github.com/TeamDman/teamy-broker/tree/dc129eb74ad791fd41d15ebd830510c3e63ab9ac), `protocol::Request` contains a string operation, optional `AcquireRequest`, and optional lease ID. Validation and server dispatch allow only `acquire`, `validate`, `status`, `purge`, and `stop`. `Engine::acquire` reuses an identical live credential lease before asking for another item approval; the SDK `Client::acquire` returns secret bytes to its caller. Extending only `AcquireRequest.purpose` or relying on that reused lease cannot authorize a Namecheap action.
+
+The minimum new path is a versioned, typed `execute_domain_operation` request and typed response, a domain-operation approval interface, and a broker-owned provider executor. The executor can reuse the broker's *internal* 1Password read adapter, but must never route the resulting secret through the SDK `Secret` frame to this CLI. It must validate and display the resolved target and full diff, keep the approved request in broker state, and return only redacted operation results. The V1 metadata frame limit is 16 KiB, potentially smaller than a full zone; the new protocol must define a bounded larger or streamed representation rather than silently truncating a snapshot. A distinct protocol version/capability or endpoint avoids an older broker mistaking operation requests for credential requests. Native desktop approval can be adapted, but phone approval remains separate work.
+
 ## V1 request shape for review
 
 The implementation should define one versioned, bounded, canonical typed request. Suggested fields are:

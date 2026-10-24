@@ -5,6 +5,7 @@ pub mod cli;
 pub mod domain;
 pub mod logging_init;
 pub mod paths;
+pub mod providers;
 #[cfg(windows)]
 mod windows_startup;
 

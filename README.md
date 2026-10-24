@@ -2,6 +2,8 @@
 
 An offline-first Rust CLI for registrar and authoritative DNS work. This initial checkpoint uses a synthetic snapshot and has **no account, network, credential, broker, or live write adapter**. It cannot change a domain. Namecheap is the first provider whose behavior informs planning; the command model keeps registrars and DNS hosts separate.
 
+An in-progress Namecheap adapter now encodes credential-free, fixed read-method parameters using explicit SLD/TLD IDs, models typed adapter failures, and retains unknown fields in a parsed-XML-tree model. The checked-in XML samples are synthetic adaptations of the official response shapes. **XML tokenization and a concrete transport are not implemented yet**; the model's tests construct trees directly. No Namecheap response is currently decoded from XML by the binary. Whole-zone writes remain blocked even for a clean sample because `getHosts` does not establish the full email service mode or prove BasicDNS eligibility, and the broker has no operation approval path. Namecheap's [domain-list documentation](https://www.namecheap.com/support/api/methods/domains/get-list/) says its general `IsOurDNS` flag can include PremiumDNS, while its [FAQ](https://www.namecheap.com/support/knowledgebase/article.aspx/9739/63/api-faq/) excludes PremiumDNS/FreeDNS management through this API.
+
 Started from [`teamy-rust-cli` at `0dfae8080f780d93bb5b5606050237b6a7b7d478`](https://github.com/TeamDman/teamy-rust-cli/tree/0dfae8080f780d93bb5b5606050237b6a7b7d478). The shared Figue/Facet parser, output renderer, logging, cancellation, paths, version metadata and existing checks were retained. The template-specific `init` command was removed. License: MPL-2.0.
 
 ## Offline commands
@@ -37,7 +39,7 @@ The provider-neutral model does not imply provider support. [Azure DNS exposes r
 
 ## Dependencies and checks
 
-This checkpoint adds **no dependency** to the copied template graph and performs no dependency or toolchain installation. A live adapter would need an approved broker operation protocol plus reviewed HTTP and XML implementations; existing cached crates are not an adoption decision. The checked repository contains no API credentials, private account fixture, allowlist value, or actual domain inventory.
+This checkpoint adds **no dependency** to the copied template graph and performs no dependency or toolchain installation. The exact missing XML dependency under review is `quick-xml =0.38.3` (cached source: MIT, no default features, runtime dependency `memchr`, which is already in this lock). It has not been added. A live adapter would also need an approved broker operation protocol and reviewed HTTP implementation; cached crates are not an adoption decision. The checked repository contains no API credentials, private account fixture, allowlist value, or actual domain inventory.
 
 Run offline tests with the existing toolchain and cached dependencies:
 

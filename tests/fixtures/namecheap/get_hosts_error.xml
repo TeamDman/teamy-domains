@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ApiResponse xmlns="http://api.namecheap.com/xml.response" Status="ERROR">
+  <Errors>
+    <Error Number="2030288">Domain is not using proper DNS servers</Error>
+  </Errors>
+  <RequestedCommand>namecheap.domains.dns.getHosts</RequestedCommand>
+</ApiResponse>
