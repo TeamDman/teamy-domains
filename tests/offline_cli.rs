@@ -9,6 +9,13 @@ fn run(args: &[&str]) -> std::process::Output {
 
 #[test]
 fn nested_help_exposes_offline_input_and_no_authentication() {
+    let root_help = run(&["--help"]);
+    assert!(root_help.status.success());
+    assert!(
+        String::from_utf8(root_help.stdout)
+            .unwrap()
+            .contains("decoding is not implemented")
+    );
     let output = run(&["record", "add", "--help"]);
     assert!(output.status.success());
     let help = String::from_utf8(output.stdout).unwrap();

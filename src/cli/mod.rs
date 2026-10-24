@@ -23,6 +23,7 @@ use teamy_cancellation::CancellationScope;
 
 /// Inspect synthetic registrar/DNS snapshots and plan domain changes offline.
 /// No account access, broker connection, or live writes are available.
+/// Namecheap XML decoding is not implemented; the provider adapter uses mock trees only.
 ///
 /// Environment variables:
 /// - `TEAMY_DOMAINS_HOME` overrides the resolved application home directory.

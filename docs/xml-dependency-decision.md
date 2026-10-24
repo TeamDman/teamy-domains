@@ -1,0 +1,26 @@
+# Namecheap XML dependency decision
+
+Status: **proposed for review, not admitted**. The CLI still has no production XML decoder, HTTP transport, broker executor, or live command. The current `NamecheapXmlDecoder` trait is exercised by a mock that constructs a tree without parsing fixture XML. `Cargo.toml` and `Cargo.lock` have not gained an XML dependency.
+
+## Candidate and reason
+
+The earlier `quick-xml =0.38.3` suggestion came from a cached source copy, MIT license, empty default feature set, and its single unconditional runtime dependency, `memchr` (already locked at 2.8.2). That was not enough to justify its exact version. The project also has cached `quick-xml 0.41.0` source. The upstream changelog records fixes after 0.38.3 for malformed DTD panics, quadratic attribute iteration, and unbounded namespace-declaration allocation in `NsReader`. Therefore **do not approve the earlier 0.38.3 pin** based on the cache argument. The version proposed for dependency review is:
+
+```toml
+quick-xml = { version = "=0.41.0", default-features = false }
+```
+
+No optional features are proposed: no `serialize`/Serde, `encoding`, `async-tokio`, `escape-html`, or `overlapped-lists`. The application needs an event tokenizer for bounded UTF-8 Namecheap responses, not a second data-model or HTTP stack. On the inspected package manifest, the only enabled runtime transitive package is `memchr = "2.1"`; Cargo can satisfy this with the existing lock's `memchr 2.8.2`. This is an expected graph, **not** a modified or resolved lockfile. The package declares MIT licensing and Rust 1.79 minimum; the existing project toolchain is Rust 1.96.0. Review the exact lockfile diff before adoption. The cached copy does not by itself qualify the dependency, and this decision does not claim `0.41.0` has no remaining parser bugs.
+
+The owned `TeamDman/facet` checkout at `74b1070` and the CLI's pinned `teamy-facet` graph contain no `teamy-facet-xml`. Upstream `facet-xml` exists, but its archived workspace depends on upstream `facet`, `facet-core`, `facet-dom`, and `facet-reflect`, and itself uses `quick-xml`. Its crate identity and versions do not match the current owned `teamy-facet` pins. It should not be inserted as if it were an owned compatible format package. The proposed adapter would use `quick-xml` only to tokenize and validate XML; its typed domain/record results and CLI output remain in the Teamy Facet-facing model. An owned Facet XML package can be evaluated separately if one becomes available.
+
+## Decoder requirements before enabling it
+
+- Accept at most 1 MiB (1,048,576 bytes) of UTF-8 response before parsing, with no alternate encoding or BOM mismatch. Keep end-tag checks on, reject unmatched ends and dangling ampersands, and reject multiple roots or trailing non-whitespace content.
+- Use namespace resolution. Require the Namecheap response URI (`http://api.namecheap.com/xml.response`) for API elements regardless of prefix spelling; reject undeclared or changed namespaces. Evolve the current `NamecheapXmlNode` to retain each element/attribute's namespace URI and qualified name before enabling the decoder; stripping a prefix would lose unknown-field evidence. Cap namespace declarations at 16 per element rather than the library's 256 default.
+- Reject every `DOCTYPE`/DTD, processing instruction other than the XML declaration, and unknown general entity. No external resolver or network/file entity loading. Decode only XML's predefined references and valid numeric character references, with a decoded-text budget.
+- Enforce depth ≤ 32, nodes ≤ 10,000, total events ≤ 20,000, attributes per node ≤ 64, total attributes ≤ 20,000, XML name length ≤ 256 bytes, and decoded text plus attribute values ≤ 2 MiB while streaming. These are initial conservative limits to test against synthetic large zones; a 1 MiB raw limit alone does not bound nesting or expansion work. Do not silently trim DNS TXT or other record values; whitespace in known wrapper elements can be interpreted only after tokenization.
+- Reject duplicate attributes, duplicate required response children, mismatched method/domain/status, and malformed provider responses. Retain unknown response fields in the tree and block any future whole-zone write when they cannot be represented losslessly. Map parser/provider failures to typed, redacted errors; never log raw XML, record values, credential-bearing URLs, or provider message text.
+- Test synthetic normal, prefixed-namespace, unknown-field, malformed, DTD/entity, depth, width, and size-limit fixtures through the **real** decoder before claiming XML response support. Keep write/apply disabled until the broker's exact-operation approval and full-zone safety checks are implemented.
+
+Source basis: [quick-xml 0.41.0 manifest](https://github.com/tafia/quick-xml/blob/v0.41.0/Cargo.toml), [quick-xml changelog](https://github.com/tafia/quick-xml/blob/v0.41.0/Changelog.md), [upstream Facet XML manifest](https://github.com/facet-rs/facet-xml/blob/main/facet-xml/Cargo.toml), [Namecheap `getHosts` response](https://www.namecheap.com/support/api/methods/domains-dns/get-hosts/), and the checked owned `TeamDman/facet` and `teamy-domains` manifests and lockfiles.
