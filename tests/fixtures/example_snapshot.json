@@ -1,0 +1,18 @@
+{
+  "registrar": {
+    "domain": "example.test",
+    "provider": "namecheap",
+    "nameservers": ["dns1.example.test", "dns2.example.test"]
+  },
+  "zone": {
+    "domain": "example.test",
+    "provider": "namecheap-basicdns",
+    "complete": true,
+    "records": [
+      {"host_id": "1", "host": "@", "record_type": "MX", "address": "mail.example.test", "ttl": 1800, "mx_pref": 10},
+      {"host_id": "2", "host": "@", "record_type": "TXT", "address": "verification=keep", "ttl": 1800, "mx_pref": null},
+      {"host_id": "3", "host": "_future", "record_type": "FUTURE", "address": "opaque", "ttl": 1800, "mx_pref": null},
+      {"host_id": "4", "host": "www", "record_type": "A", "address": "192.0.2.4", "ttl": 1800, "mx_pref": null}
+    ]
+  }
+}
