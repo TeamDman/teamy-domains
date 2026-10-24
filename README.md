@@ -39,7 +39,7 @@ The provider-neutral model does not imply provider support. [Azure DNS exposes r
 
 ## Dependencies and checks
 
-This checkpoint adds **no dependency** to the copied template graph and performs no dependency or toolchain installation. The [XML dependency decision](docs/xml-dependency-decision.md) supersedes the preliminary `quick-xml 0.38.3` candidate with `0.41.0` for explicit review; neither version has been added. A live adapter would also need an approved broker operation protocol and reviewed HTTP implementation; cached crates are not an adoption decision. The checked repository contains no API credentials, private account fixture, allowlist value, or actual domain inventory.
+This checkpoint adds **no dependency** to the copied template graph and performs no dependency or toolchain installation. The [XML dependency decision](docs/xml-dependency-decision.md) now accounts for the matching `TeamDman/facet-format/facet-xml` source and favors a hardened, Teamy-packaged Facet XML path. Neither that package nor the earlier `quick-xml` candidate has been added. A live adapter would also need an approved broker operation protocol and reviewed HTTP implementation; cached crates are not an adoption decision. The checked repository contains no API credentials, private account fixture, allowlist value, or actual domain inventory.
 
 Run offline tests with the existing toolchain and cached dependencies:
 
