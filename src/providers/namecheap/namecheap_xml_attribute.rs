@@ -1,6 +1,8 @@
 /// Decoded XML attribute retained even when the adapter does not understand it.
 #[derive(Clone, PartialEq, Eq)]
 pub struct NamecheapXmlAttribute {
+    /// Namespace URI; unprefixed XML attributes have no namespace.
+    pub namespace: Option<String>,
     pub name: String,
     pub value: String,
 }

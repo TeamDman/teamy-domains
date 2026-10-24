@@ -2,6 +2,7 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NamecheapWriteBlocker {
     NonAuthoritative,
+    MissingRawResponse,
     UnverifiedDnsServiceMode,
     UnknownResultAttribute,
     UnknownResultElement,

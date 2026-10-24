@@ -1,31 +1,59 @@
-# Namecheap XML dependency decision
+# Namecheap XML source decision
 
-Status (2026-10-24): **source review only**. `teamy-domains` still has no production XML decoder or transport and has added no dependency. The earlier `quick-xml =0.38.3` request is superseded. The later `quick-xml =0.41.0` admission request remains unanswered and is on hold while the owned Facet XML route is assessed.
+Status (2026-10-24): **synthetic, exact-source qualification only**. The CLI
+binary has no XML decoder or live transport. Its production `Cargo.toml` has
+not gained an XML dependency.
 
-## Upstream, owned, and published state
+The owned [`TeamDman/facet-format` source](https://github.com/TeamDman/facet-format/tree/fe271471dfeed52a049ce2df6aeb72bb9c75a632) at
+`fe271471dfeed52a049ce2df6aeb72bb9c75a632` provides
+`teamy-facet-dom`, `teamy-facet-xml`, and `teamy-facet-xml-node`, all
+`0.50.0-rc.7`. It resolves core Facet through the sibling owned
+[`TeamDman/facet` source](https://github.com/TeamDman/facet/tree/74b1070dc1c889f429ba79ff458a38dae46209a5)
+at `74b1070dc1c889f429ba79ff458a38dae46209a5`. The XML crate pins
+`quick-xml =0.41.0` with default features off. The recorded registry archive
+SHA-256 is
+`e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1`.
+The [isolated qualification crate](../qualification/owned-facet-xml/README.md)
+verifies the sibling source SHAs and runs synthetic Namecheap responses
+through the owned strict parser with an injected mock transport.
 
-The user-identified [upstream `facet-rs/facet-format/facet-xml`](https://github.com/facet-rs/facet-format/blob/main/facet-xml/Cargo.toml) exists at `0.50.0-rc.7`. The matching [owned `TeamDman/facet-format` fork](https://github.com/TeamDman/facet-format/blob/teamy-main/facet-xml/Cargo.toml) at `642d268fc01eced0a861bded044342ff88733eec` contains the same `facet-xml` package manifest. Its workspace aliases `facet`, `facet-core`, and `facet-reflect` to the exact `teamy-facet-* =0.50.0-rc.7` family used by this CLI. This corrects the earlier assessment that considered only the archived standalone `facet-xml` repository and the owned core Facet checkout.
+## What the parser proves
 
-The fork's XML, DOM, and raw-node packages are still named `facet-xml`, `facet-dom`, and `facet-xml-node`, not `teamy-facet-*`. The [owned fork's published-package list](https://github.com/TeamDman/facet-format/blob/teamy-main/README.md) names Format, Dessert, JSON, Value, and CSV; its [release configuration](https://github.com/TeamDman/facet-format/blob/teamy-main/release-plz.toml) opts those packages in and leaves the XML family out. No `teamy-facet-xml` appears in the checked CLI lockfile or cached registry source. A direct crates.io API lookup returned HTTP 403 in this environment, so **separate registry publication could not be independently ruled out**; the supported conclusion is that the inspected owned fork has neither a Teamy-named XML package nor an XML publication path.
+The strict parser bounds response size, nesting, events, attributes, namespace
+declarations, and values. It retains expanded names and exact element slices;
+the read client retains the full original response. It rejects DTDs, CDATA,
+unknown entities, unsupported XML versions/encodings, escaped namespace
+declarations, and ambiguous structure. The Namecheap adapter requires the
+documented namespace URI on known elements and no namespace on known
+attributes. Foreign same-local-name elements and attributes cannot stand in
+for a Namecheap `Host` or `Type`. Errors do not expose provider response text.
 
-Adding crates.io's upstream `facet-xml` directly would pull upstream Facet crate identities rather than the CLI's `teamy-facet` identities. The owned workspace's `../facet` paths make its source coherent locally but are not a portable dependency for the eventual desktop install.
+This is a **read qualification**, not a lossless `setHosts` adapter. Unknown
+records and fields are visible and block writes; even a clean response does
+not verify Namecheap BasicDNS and email service settings. The current broker
+does not approve an exact operation, so no live read/write executor or apply
+command is enabled. Namecheap's
+[`setHosts` documentation](https://www.namecheap.com/support/api/methods/domains-dns/set-hosts/)
+says omitted hosts are removed. A future write must preserve every existing
+row and service setting, bind approval to a full snapshot and diff, re-read
+before writing, and verify afterward. It cannot claim atomic compare-and-swap.
 
-The fork's [XML manifest](https://github.com/TeamDman/facet-format/blob/teamy-main/facet-xml/Cargo.toml) uses `quick-xml = "0.39"` with default features off; its lock resolves `quick-xml 0.39.4` and `memchr`. That parser is already an underlying dependency of the Facet route. The earlier direct-tokenizer candidate `quick-xml =0.41.0` has no optional features proposed and would also depend only on the already locked `memchr` in this CLI, but it has **not** been added. [Upstream's changelog](https://github.com/tafia/quick-xml/blob/v0.41.0/Changelog.md) records later namespace-allocation and attribute-iteration hardening. Any change to the owned XML crate's underlying pin needs a separate reviewed lockfile diff.
+## Dependency and publication gate
 
-## Fit for Namecheap responses
+The separate qualification lock deliberately contains both the CLI's
+registry `teamy-facet` family and the XML fork's sibling path family at the
+same versions. The bridge crosses that boundary only with plain strings and
+domain structs; this does **not** establish a portable, unified production
+dependency graph. A direct Cargo git dependency on the format fork also is
+not self-contained because its core Facet dependencies use `../facet` paths.
 
-Owned `facet-xml::from_slice` can deserialize Facet types and its `XmlParser` emits namespace-bearing DOM events. That is a useful foundation for typed read outputs. It is **not yet a lossless, bounded Namecheap decoder**:
-
-- The [current parser](https://github.com/TeamDman/facet-format/blob/teamy-main/facet-xml/src/dom_parser.rs) enables `trim_text(true)` and also trims nonempty text events. This loses element-text whitespace. The documented `getHosts` record values are attributes, but a lossless response decoder must still retain unknown text exactly.
-- It resolves element/attribute namespace URIs for DOM events but drops qualified prefixes and `xmlns` declarations; it maps an unresolved prefix to `None`. It also emits `DOCTYPE` as a DOM event and returns an unknown named entity as literal `&name;`. A Namecheap adapter must reject or retain these conditions explicitly before trusting a response.
-- The public `XmlParser::new` takes bytes without a response-size, depth, event, attribute, or decoded-text budget. Its state changes to `Done` after the first root closes, so trailing non-whitespace input also needs an explicit check. Typed deserialization alone cannot prove that every unknown element or attribute survived.
-- [`facet-xml-node::Element`](https://github.com/TeamDman/facet-format/blob/teamy-main/facet-xml-node/src/lib.rs) captures arbitrary elements but stores only a local tag and `HashMap<String, String>` attributes; its element parser emits no namespace URI. This is insufficient evidence for a lossless full-zone round trip when unknown namespaced fields appear.
-
-Prefer a **coherent owned Facet XML adapter** over adding a separate direct-`quick-xml` decoder to `teamy-domains`, provided these gaps are fixed in the owned fork first. Keep raw unknown fields and namespace identities, and block any future `setHosts` when a field or service setting cannot be represented. A typed read-only model may use Facet earlier, but must never turn a partial typed result into whole-zone write authority. Namecheap [`setHosts` replaces omitted hosts](https://www.namecheap.com/support/api/methods/domains-dns/set-hosts/); the broker must still bind approval to the exact full snapshot and diff, re-read before writing, and verify afterward.
-
-## Smallest qualifying route
-
-1. In an isolated owned-fork branch, decide exact Teamy package versions and rename/package at least `facet-dom` and `facet-xml` as `teamy-facet-dom` and `teamy-facet-xml` with exact aliases to the existing Teamy core and Dessert family. If using the generic raw-node crate, adapt and package `teamy-facet-xml-node` too. Audit `facet-singularize`, `heck`, `owo-colors`, and `quick-xml` as transitive dependencies. Do not mix upstream `facet-*` core identities into the CLI.
-2. Harden the parser or a Facet-owned raw-node path before consumption: reject DTDs, processing instructions outside the XML declaration, unknown entities, unresolved or changed namespaces, and trailing content or extra roots; preserve exact record text and unknown attributes/elements with namespace identity; reject duplicate attributes and response fields. Map errors to typed redacted failures without raw XML or provider messages.
-3. Apply and test explicit limits while streaming: raw response ≤ 1 MiB, depth ≤ 32, nodes ≤ 10,000, events ≤ 20,000, attributes per node ≤ 64, total attributes ≤ 20,000, name length ≤ 256 bytes, namespace declarations per element ≤ 16, and decoded text plus attribute values ≤ 2 MiB. Test normal, prefixed-namespace, unknown-field, DTD/entity, malformed, and limit fixtures through the real decoder. These limits are initial values to validate against synthetic large zones.
-4. Review the exact XML/DOM package graph and underlying `quick-xml` pin before adding it. The owned fork's manual release configuration would need explicit XML-family entries and dependency-order validation before **any** publication; none is authorized now. Only then add a reviewed exact Teamy XML pin to `teamy-domains`. Broker operation approval, desktop execution, and full-zone write qualification remain separate gates.
+The owned format fork's release configuration has workspace `publish=false`
+and currently opts in Format, Dessert, JSON, and Value, not this XML family.
+Later registry use requires a separate decision to publish and pin, in order,
+`teamy-facet-dom` → `teamy-facet-xml` → `teamy-facet-xml-node`, all
+`0.50.0-rc.7` or a reviewed compatible next set. DOM depends on local
+`facet-singularize 0.50.0-rc.7`; its exact registry availability has not been
+established, so that identity must be verified or explicitly replaced/published
+before any XML package release. The required owned core/Dessert identities
+and registry dependency closure also need validation. No crate publication or
+dependency adoption is authorized by this qualification.

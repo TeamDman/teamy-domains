@@ -33,135 +33,16 @@ impl<T: NamecheapTransport, D: NamecheapXmlDecoder> NamecheapReadClient<T, D> {
             return Err(NamecheapAdapterError::ResponseTooLarge);
         }
         let tree = self.decoder.decode(&xml)?;
-        NamecheapHostResponse::from_tree(tree, domain)
+        let mut response = NamecheapHostResponse::from_tree(tree, domain)?;
+        response.attach_raw_response(xml);
+        Ok(response)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::namecheap::{
-        NamecheapRequestFields, NamecheapWriteBlocker, NamecheapXmlAttribute, NamecheapXmlNode,
-    };
-    use std::cell::Cell;
-
-    const FIXTURE: &str = include_str!("../../../tests/fixtures/namecheap/get_hosts_unknown.xml");
-
-    struct MockTransport {
-        calls: Cell<u32>,
-    }
-    impl NamecheapTransport for MockTransport {
-        fn exchange(
-            &self,
-            request: &NamecheapRequestFields,
-        ) -> Result<String, NamecheapAdapterError> {
-            assert_eq!(request.method(), "namecheap.domains.dns.getHosts");
-            assert_eq!(
-                request.params(),
-                &[
-                    ("SLD".into(), "example".into()),
-                    ("TLD".into(), "test".into())
-                ]
-            );
-            self.calls.set(self.calls.get() + 1);
-            Ok(FIXTURE.into())
-        }
-    }
-
-    // This test decoder stands in for reviewed XML tokenization. It verifies fixture routing,
-    // not XML parsing; no production decoder exists yet.
-    struct FixtureDecoder;
-    impl NamecheapXmlDecoder for FixtureDecoder {
-        fn decode(&self, xml: &str) -> Result<NamecheapXmlNode, NamecheapAdapterError> {
-            assert_eq!(xml, FIXTURE);
-            let attr = |name: &str, value: &str| NamecheapXmlAttribute {
-                name: name.into(),
-                value: value.into(),
-            };
-            let node = |name: &str,
-                        attributes: Vec<NamecheapXmlAttribute>,
-                        text: &str,
-                        children: Vec<NamecheapXmlNode>| NamecheapXmlNode {
-                name: name.into(),
-                attributes,
-                text: text.into(),
-                children,
-            };
-            Ok(node(
-                "ApiResponse",
-                vec![
-                    attr("Status", "OK"),
-                    attr("xmlns", "http://api.namecheap.com/xml.response"),
-                ],
-                "",
-                vec![
-                    node("Errors", Vec::new(), "", Vec::new()),
-                    node(
-                        "RequestedCommand",
-                        Vec::new(),
-                        "namecheap.domains.dns.getHosts",
-                        Vec::new(),
-                    ),
-                    node(
-                        "CommandResponse",
-                        vec![attr("Type", "namecheap.domains.dns.getHosts")],
-                        "",
-                        vec![node(
-                            "DomainDNSGetHostsResult",
-                            vec![
-                                attr("Domain", "example.test"),
-                                attr("IsUsingOurDNS", "true"),
-                                attr("FutureService", "keep"),
-                            ],
-                            "",
-                            vec![
-                                node(
-                                    "Host",
-                                    vec![
-                                        attr("HostId", "21"),
-                                        attr("Name", "_future"),
-                                        attr("Type", "FUTURE"),
-                                        attr("Address", "opaque"),
-                                        attr("TTL", "1800"),
-                                        attr("FutureFlag", "keep"),
-                                    ],
-                                    "",
-                                    Vec::new(),
-                                ),
-                                node(
-                                    "FutureChild",
-                                    vec![attr("Enabled", "true")],
-                                    "preserve me",
-                                    Vec::new(),
-                                ),
-                            ],
-                        )],
-                    ),
-                ],
-            ))
-        }
-    }
-
-    #[test]
-    fn mock_transport_passes_fixture_to_typed_decoder_without_credential_fields() {
-        let client = NamecheapReadClient::new(
-            MockTransport {
-                calls: Cell::new(0),
-            },
-            FixtureDecoder,
-        );
-        let response = client
-            .get_hosts(NamecheapDomainId::new("example", "test").unwrap())
-            .unwrap();
-        assert_eq!(client.transport.calls.get(), 1);
-        assert_eq!(response.hosts()[0].extra_attributes[0].value, "keep");
-        assert_eq!(response.extra_elements()[0].text, "preserve me");
-        assert!(
-            response
-                .write_blockers()
-                .contains(&NamecheapWriteBlocker::UnknownHostAttribute)
-        );
-    }
+    use crate::providers::namecheap::{NamecheapRequestFields, NamecheapXmlNode};
 
     struct OversizedTransport;
     impl NamecheapTransport for OversizedTransport {

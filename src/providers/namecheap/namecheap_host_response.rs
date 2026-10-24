@@ -3,6 +3,12 @@ use super::{
     NamecheapWriteBlocker, NamecheapXmlAttribute, NamecheapXmlNode,
 };
 
+const NAMECHEAP_XML_NAMESPACE: &str = "http://api.namecheap.com/xml.response";
+
+fn is_namecheap_element(node: &NamecheapXmlNode, name: &str) -> bool {
+    node.name == name && node.namespace.as_deref() == Some(NAMECHEAP_XML_NAMESPACE)
+}
+
 /// A successful `getHosts` result. Raw extras remain visible to a future adapter.
 #[derive(Clone, PartialEq, Eq)]
 pub struct NamecheapHostResponse {
@@ -12,6 +18,7 @@ pub struct NamecheapHostResponse {
     extra_attributes: Vec<NamecheapXmlAttribute>,
     extra_elements: Vec<NamecheapXmlNode>,
     raw_tree: NamecheapXmlNode,
+    raw_response: Option<String>,
     unrecognized_envelope: bool,
 }
 
@@ -29,10 +36,7 @@ impl NamecheapHostResponse {
         root: NamecheapXmlNode,
         expected_domain: NamecheapDomainId,
     ) -> Result<Self, NamecheapAdapterError> {
-        if root.name != "ApiResponse" {
-            return Err(NamecheapAdapterError::MalformedResponse);
-        }
-        if required_attribute(&root, "xmlns")? != "http://api.namecheap.com/xml.response" {
+        if !is_namecheap_element(&root, "ApiResponse") {
             return Err(NamecheapAdapterError::MalformedResponse);
         }
         match required_attribute(&root, "Status")? {
@@ -77,7 +81,9 @@ impl NamecheapHostResponse {
         let extra_attributes = result
             .attributes
             .iter()
-            .filter(|a| !matches!(a.name.as_str(), "Domain" | "IsUsingOurDNS"))
+            .filter(|a| {
+                a.namespace.is_some() || !matches!(a.name.as_str(), "Domain" | "IsUsingOurDNS")
+            })
             .cloned()
             .collect();
         Ok(Self {
@@ -87,6 +93,7 @@ impl NamecheapHostResponse {
             extra_attributes,
             extra_elements,
             raw_tree: root,
+            raw_response: None,
             unrecognized_envelope,
         })
     }
@@ -97,6 +104,9 @@ impl NamecheapHostResponse {
         let mut blockers = Vec::new();
         if !self.using_namecheap_dns {
             blockers.push(NamecheapWriteBlocker::NonAuthoritative);
+        }
+        if self.raw_response.is_none() {
+            blockers.push(NamecheapWriteBlocker::MissingRawResponse);
         }
         // IsUsingOurDNS can include services that getHosts/setHosts cannot manage.
         blockers.push(NamecheapWriteBlocker::UnverifiedDnsServiceMode);
@@ -152,6 +162,15 @@ impl NamecheapHostResponse {
     pub fn raw_tree(&self) -> &NamecheapXmlNode {
         &self.raw_tree
     }
+
+    #[must_use]
+    pub fn raw_response(&self) -> Option<&str> {
+        self.raw_response.as_deref()
+    }
+
+    pub(crate) fn attach_raw_response(&mut self, response: String) {
+        self.raw_response = Some(response);
+    }
 }
 
 fn has_unrecognized_envelope(
@@ -163,34 +182,39 @@ fn has_unrecognized_envelope(
         || root
             .attributes
             .iter()
-            .any(|a| !matches!(a.name.as_str(), "Status" | "xmlns"))
+            .any(|a| a.namespace.is_some() || a.name != "Status")
         || root.children.iter().any(|c| {
-            !matches!(
-                c.name.as_str(),
-                "Errors"
-                    | "RequestedCommand"
-                    | "CommandResponse"
-                    | "Server"
-                    | "GMTTimeDifference"
-                    | "ExecutionTime"
-            )
+            c.namespace.as_deref() != Some(NAMECHEAP_XML_NAMESPACE)
+                || !matches!(
+                    c.name.as_str(),
+                    "Errors"
+                        | "RequestedCommand"
+                        | "CommandResponse"
+                        | "Server"
+                        | "GMTTimeDifference"
+                        | "ExecutionTime"
+                )
         })
         || root
             .children
             .iter()
             .filter(|c| {
-                matches!(
-                    c.name.as_str(),
-                    "RequestedCommand" | "Server" | "GMTTimeDifference" | "ExecutionTime"
-                )
+                c.namespace.as_deref() == Some(NAMECHEAP_XML_NAMESPACE)
+                    && matches!(
+                        c.name.as_str(),
+                        "RequestedCommand" | "Server" | "GMTTimeDifference" | "ExecutionTime"
+                    )
             })
             .any(|c| !c.attributes.is_empty() || !c.children.is_empty())
-        || command.attributes.iter().any(|a| a.name != "Type")
+        || command
+            .attributes
+            .iter()
+            .any(|a| a.namespace.is_some() || a.name != "Type")
         || !command.text.trim().is_empty()
         || command
             .children
             .iter()
-            .any(|c| c.name != "DomainDNSGetHostsResult")
+            .any(|c| !is_namecheap_element(c, "DomainDNSGetHostsResult"))
         || !result.text.trim().is_empty()
 }
 
@@ -202,8 +226,8 @@ fn parse_hosts(
     let mut extra_elements = Vec::new();
     let mut unknown_host_content = false;
     for child in &result.children {
-        if child.name == "Host" {
-            if !child.children.is_empty() || !child.text.trim().is_empty() {
+        if is_namecheap_element(child, "Host") {
+            if !child.children.is_empty() || !child.text.is_empty() {
                 unknown_host_content = true;
             }
             let host_id = NamecheapHostId::new(required_attribute(child, "HostId")?)?;
@@ -221,10 +245,11 @@ fn parse_hosts(
                     .attributes
                     .iter()
                     .filter(|a| {
-                        !matches!(
-                            a.name.as_str(),
-                            "HostId" | "Name" | "Type" | "Address" | "MXPref" | "TTL"
-                        )
+                        a.namespace.is_some()
+                            || !matches!(
+                                a.name.as_str(),
+                                "HostId" | "Name" | "Type" | "Address" | "MXPref" | "TTL"
+                            )
                     })
                     .cloned()
                     .collect(),
@@ -240,7 +265,10 @@ fn optional_attribute<'a>(
     node: &'a NamecheapXmlNode,
     name: &str,
 ) -> Result<Option<&'a str>, NamecheapAdapterError> {
-    let mut matches = node.attributes.iter().filter(|a| a.name == name);
+    let mut matches = node
+        .attributes
+        .iter()
+        .filter(|a| a.namespace.is_none() && a.name == name);
     let first = matches.next().map(|a| a.value.as_str());
     if matches.next().is_some() {
         return Err(NamecheapAdapterError::MalformedResponse);
@@ -259,7 +287,10 @@ fn required_child<'a>(
     node: &'a NamecheapXmlNode,
     name: &str,
 ) -> Result<&'a NamecheapXmlNode, NamecheapAdapterError> {
-    let mut matches = node.children.iter().filter(|c| c.name == name);
+    let mut matches = node
+        .children
+        .iter()
+        .filter(|c| is_namecheap_element(c, name));
     let first = matches
         .next()
         .ok_or(NamecheapAdapterError::MalformedResponse)?;
@@ -280,26 +311,26 @@ mod tests {
         children: Vec<NamecheapXmlNode>,
     ) -> NamecheapXmlNode {
         NamecheapXmlNode {
+            namespace: Some(NAMECHEAP_XML_NAMESPACE.into()),
             name: name.into(),
             attributes: attributes
                 .iter()
                 .map(|(name, value)| NamecheapXmlAttribute {
+                    namespace: None,
                     name: (*name).into(),
                     value: (*value).into(),
                 })
                 .collect(),
             text: text.into(),
             children,
+            raw_xml: None,
         }
     }
 
     fn tree_with_host(host: NamecheapXmlNode) -> NamecheapXmlNode {
         node(
             "ApiResponse",
-            &[
-                ("Status", "OK"),
-                ("xmlns", "http://api.namecheap.com/xml.response"),
-            ],
+            &[("Status", "OK")],
             "",
             vec![
                 node("Errors", &[], "", Vec::new()),
@@ -340,11 +371,14 @@ mod tests {
             extra_attributes: Vec::new(),
             extra_elements: Vec::new(),
             raw_tree: NamecheapXmlNode {
+                namespace: Some(NAMECHEAP_XML_NAMESPACE.into()),
                 name: "ApiResponse".into(),
                 attributes: Vec::new(),
                 text: String::new(),
                 children: Vec::new(),
+                raw_xml: None,
             },
+            raw_response: None,
             unrecognized_envelope: false,
         }
     }
@@ -360,21 +394,25 @@ mod tests {
     fn unknown_fields_and_records_are_retained_and_block_writes() {
         let mut response = sample();
         response.extra_attributes.push(NamecheapXmlAttribute {
+            namespace: None,
             name: "FutureService".into(),
             value: "keep".into(),
         });
         response.hosts[0]
             .extra_attributes
             .push(NamecheapXmlAttribute {
+                namespace: None,
                 name: "FutureFlag".into(),
                 value: "keep".into(),
             });
         response.hosts[0].record_type = "FUTURE".into();
         response.extra_elements.push(NamecheapXmlNode {
+            namespace: Some(NAMECHEAP_XML_NAMESPACE.into()),
             name: "FutureChild".into(),
             attributes: Vec::new(),
             text: "preserve me".into(),
             children: Vec::new(),
+            raw_xml: None,
         });
         response.using_namecheap_dns = false;
         let blockers = response.write_blockers();
@@ -457,7 +495,7 @@ mod tests {
             "",
             Vec::new(),
         ));
-        tree.attributes[1].value = "https://unrelated.example.test/xml".into();
+        tree.namespace = Some("https://unrelated.example.test/xml".into());
         assert_eq!(
             NamecheapHostResponse::from_tree(tree, domain),
             Err(NamecheapAdapterError::MalformedResponse)
@@ -479,10 +517,12 @@ mod tests {
         );
         let mut tree = tree_with_host(host);
         tree.attributes.push(NamecheapXmlAttribute {
+            namespace: None,
             name: "FutureEnvelope".into(),
             value: "keep".into(),
         });
         tree.children[1].attributes.push(NamecheapXmlAttribute {
+            namespace: None,
             name: "FutureCommandField".into(),
             value: "keep".into(),
         });
@@ -503,10 +543,7 @@ mod tests {
     fn error_tree_returns_provider_code_without_raw_message() {
         let tree = node(
             "ApiResponse",
-            &[
-                ("Status", "ERROR"),
-                ("xmlns", "http://api.namecheap.com/xml.response"),
-            ],
+            &[("Status", "ERROR")],
             "",
             vec![node(
                 "Errors",
